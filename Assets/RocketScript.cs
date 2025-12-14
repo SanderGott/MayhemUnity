@@ -15,10 +15,16 @@ public class RocketScript : MonoBehaviour
     public float rotationSpeed = 70;
 
     public float health = 100;
+    public float healthLoss = 10;
 
     public Rigidbody2D thisRigidBody;
 
     private SpriteRenderer sr;
+
+
+    [Header("Missiles")]
+    [SerializeField] private GameObject missilePrefab;
+    [SerializeField] private Transform missileSpawnPoint;
 
     private void Awake()
     {
@@ -45,7 +51,7 @@ public class RocketScript : MonoBehaviour
     void Start()
     {
         thrustVal = 0.01f;
-        rotationSpeed = 130;
+        rotationSpeed = 360;
 
         
 
@@ -63,12 +69,15 @@ public class RocketScript : MonoBehaviour
 
             if (Keyboard.current.aKey.isPressed)
             {
-                transform.Rotate(0f, 0f, rotationSpeed * Time.deltaTime);
+                //transform.Rotate(0f, 0f, rotationSpeed * Time.deltaTime);
+                thisRigidBody.angularVelocity += rotationSpeed * Time.deltaTime;
+
                 turnLeft = true;
             }
             if (Keyboard.current.dKey.isPressed)
             {
-                transform.Rotate(0f, 0f, -rotationSpeed * Time.deltaTime);
+                //transform.Rotate(0f, 0f, -rotationSpeed * Time.deltaTime);
+                thisRigidBody.angularVelocity -= rotationSpeed * Time.deltaTime;
                 turnRight = true;
             }
 
@@ -80,6 +89,15 @@ public class RocketScript : MonoBehaviour
             } else
             {
                 sr.sprite = spriteNormal;
+        
+            }
+
+            if ( Keyboard.current.spaceKey.wasPressedThisFrame)
+            {
+                FireMissile();
+            }
+            {
+                
             }
         }
 
@@ -96,5 +114,34 @@ public class RocketScript : MonoBehaviour
 
 
 
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.CompareTag("Missile"))
+        {
+            Debug.Log("Rocket hit by missile");
+            // damage / explode / etc
+            health -= healthLoss;
+
+        }
+    }
+
+    private void OnCollisionEnter2D(Collision2D col)
+    {
+        if (col.collider.CompareTag("Background"))
+        {
+            Debug.Log("Rocket hit background");
+            health -= healthLoss;
+        }
+    }
+
+    private void FireMissile()
+    {
+        Instantiate(
+            missilePrefab,
+            missileSpawnPoint.position,
+            missileSpawnPoint.rotation
+        );
     }
 }
