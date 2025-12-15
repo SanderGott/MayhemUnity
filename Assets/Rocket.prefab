@@ -109,8 +109,8 @@ MonoBehaviour:
   spriteFire: {fileID: 1064143137389927078, guid: 2ebacaf24caaaa34cbd8b9b8305cc0e5, type: 3}
   thrustLeft: {fileID: 0}
   thrustRight: {fileID: 0}
-  thrustVal: 3
-  rotationSpeed: 70
+  thrustVal: 0.1
+  rotationSpeed: 270
   healthLoss: 10
   Health:
     m_InternalValue: 100

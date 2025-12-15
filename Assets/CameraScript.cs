@@ -2,63 +2,81 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Netcode;
 using UnityEngine.UI;
+using TMPro;
 
 public class CameraScript : MonoBehaviour
 {
-    public Transform target;
-    public Vector3 offset;
+    [SerializeField] private Vector3 offset = new Vector3(0, 0, -10);
 
 
-    [SerializeField] private Button hostButton;
-    [SerializeField] private Button clientButton;
 
+    [SerializeField] public NetworkObject rocket;
+    private RocketScript rocketScript;
+    public TextMeshProUGUI healthText;
+
+    private Transform target;
 
     private void Start()
     {
-        hostButton.onClick.AddListener(HostButtonOnClick);
-        clientButton.onClick.AddListener(ClientButtonOnClick);
 
+
+        NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
     }
 
-    private void HostButtonOnClick()
+    private void OnDestroy()
     {
-        NetworkManager.Singleton.StartHost();
-    }
-    private void ClientButtonOnClick()
-    {
-        NetworkManager.Singleton.StartClient();
+        if (NetworkManager.Singleton != null)
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
     }
 
-    void LateUpdate()
+    private void OnClientConnected(ulong clientId)
     {
-        if (target == null) return;
+        // Only set target for *this* local client
+        if (clientId != NetworkManager.Singleton.LocalClientId) return;
 
-        Vector3 pos = transform.position;
-        pos.x = target.position.x;
-        pos.y = target.position.y;
-        transform.position = pos;
+        TryAssignLocalPlayerAsTarget();
+    }
 
-
-        if (Keyboard.current == null) return;
-        Camera cam = Camera.main;
-
-
-
-        if (Keyboard.current.qKey.isPressed) cam.orthographicSize -= 0.1f;
-        if (Keyboard.current.eKey.isPressed) cam.orthographicSize += 0.1f;
-
-
-        if (Keyboard.current.f1Key.wasPressedThisFrame)
+    private void TryAssignLocalPlayerAsTarget()
+    {
+        var playerObj = NetworkManager.Singleton.LocalClient?.PlayerObject;
+        if (playerObj != null)
         {
-            Debug.Log(
-                $"IsHost={NetworkManager.Singleton.IsHost}, " +
-                $"IsServer={NetworkManager.Singleton.IsServer}, " +
-                $"IsClient={NetworkManager.Singleton.IsClient}, " +
-                $"IsConnectedClient={NetworkManager.Singleton.IsConnectedClient}, " +
-                $"LocalClientId={NetworkManager.Singleton.LocalClientId}"
-            );
+            rocket = playerObj;
+            target = playerObj.transform;
+
+            rocketScript = playerObj.GetComponent<RocketScript>();
+
+            Debug.Log($"Camera target set to local player: {target.name}");
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (target == null && NetworkManager.Singleton != null && NetworkManager.Singleton.IsClient)
+            TryAssignLocalPlayerAsTarget();
+
+        if (target == null) return;
+        var p = target.position + offset;
+        p.z = -10;
+
+        transform.position = p;
+
+        // health stuff
+        if (rocketScript != null)
+        {
+            healthText.text = $"Health: \n {rocketScript.Health.Value:0}%";
         }
 
-
+        // Zoom
+        if (Keyboard.current != null)
+        {
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                if (Keyboard.current.qKey.isPressed) cam.orthographicSize -= 0.1f;
+                if (Keyboard.current.eKey.isPressed) cam.orthographicSize += 0.1f;
+            }
+        }
     }
 }

@@ -14,7 +14,7 @@ public class RocketScript : NetworkBehaviour
     [SerializeField] private SpriteRenderer thrustRight;  
 
     [Header("Tuning")]
-    [SerializeField] private float thrustVal = 0.001f;
+    [SerializeField] private float thrustVal = 0.01f;
     [SerializeField] private float rotationSpeed = 360f; 
 
     [Header("Health")]
@@ -56,7 +56,13 @@ public class RocketScript : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-       
+        if (!IsServer) return;
+
+        
+        if (OwnerClientId == 1)
+        {
+            transform.position = new Vector3(8f, -9f, transform.position.z);
+        }
     }
 
     private void Update()
