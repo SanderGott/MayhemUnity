@@ -1,147 +1,147 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Netcode;
+using Unity.Netcode.Components;
 
-public class RocketScript : MonoBehaviour
+[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(SpriteRenderer))]
+public class RocketScript : NetworkBehaviour
 {
-
     [SerializeField] private Sprite spriteNormal;
     [SerializeField] private Sprite spriteFire;
 
-    [SerializeField] private SpriteRenderer thrustLeft;
-    [SerializeField] private SpriteRenderer thrustRight;
+    [SerializeField] private SpriteRenderer thrustLeft;   
+    [SerializeField] private SpriteRenderer thrustRight;  
 
-    public float thrustVal = 0.1f;
-    public float direction;
-    public float rotationSpeed = 70;
+    [Header("Tuning")]
+    [SerializeField] private float thrustVal = 0.001f;
+    [SerializeField] private float rotationSpeed = 360f; 
 
-    public float health = 100;
-    public float healthLoss = 10;
-
-    public Rigidbody2D thisRigidBody;
-
-    private SpriteRenderer sr;
-
+    [Header("Health")]
+    [SerializeField] private float healthLoss = 10f;
+    public NetworkVariable<float> Health = new NetworkVariable<float>(
+        100f,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
 
     [Header("Missiles")]
-    [SerializeField] private GameObject missilePrefab;
+    [SerializeField] private NetworkObject missilePrefab;     // MUST have NetworkObject
     [SerializeField] private Transform missileSpawnPoint;
+
+    private Rigidbody2D rb;
+    private SpriteRenderer sr;
+
+    private float turnInput;
+    private float thrustInput;
 
     private void Awake()
     {
+        rb = GetComponent<Rigidbody2D>();
         sr = GetComponent<SpriteRenderer>();
 
-        
-
-        // Auto-wire if not set in Inspector
         if (!thrustLeft || !thrustRight)
         {
             foreach (var r in GetComponentsInChildren<SpriteRenderer>(true))
             {
-                if (r.gameObject.name.Contains("left")) thrustLeft = r;
-                if (r.gameObject.name.Contains("right")) thrustRight = r;
+                var n = r.gameObject.name.ToLowerInvariant();
+                if (!thrustLeft && n.Contains("left")) thrustLeft = r;
+                if (!thrustRight && n.Contains("right")) thrustRight = r;
             }
         }
 
-        // start hidden
         if (thrustLeft) thrustLeft.enabled = false;
         if (thrustRight) thrustRight.enabled = false;
     }
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public override void OnNetworkSpawn()
     {
-        thrustVal = 0.01f;
-        rotationSpeed = 360;
-
-        
-
+       
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Update()
     {
-        bool turnLeft = false;
-        bool turnRight = false;
-
-        if (Keyboard.current != null)
+        if (IsOwner && Keyboard.current != null)
         {
-            
+            turnInput = 0f;
+            if (Keyboard.current.aKey.isPressed) turnInput = 1f;
+            if (Keyboard.current.dKey.isPressed) turnInput = -1f;
 
-            if (Keyboard.current.aKey.isPressed)
-            {
-                //transform.Rotate(0f, 0f, rotationSpeed * Time.deltaTime);
-                thisRigidBody.angularVelocity += rotationSpeed * Time.deltaTime;
+            thrustInput = Keyboard.current.wKey.isPressed ? 1f : 0f;
 
-                turnLeft = true;
-            }
-            if (Keyboard.current.dKey.isPressed)
-            {
-                //transform.Rotate(0f, 0f, -rotationSpeed * Time.deltaTime);
-                thisRigidBody.angularVelocity -= rotationSpeed * Time.deltaTime;
-                turnRight = true;
-            }
-
-            if (Keyboard.current.wKey.isPressed)
-            {
-                Vector2 forward = transform.up;
-                thisRigidBody.linearVelocity += forward * thrustVal;
-                sr.sprite = spriteFire;
-            } else
-            {
-                sr.sprite = spriteNormal;
-        
-            }
-
-            if ( Keyboard.current.spaceKey.wasPressedThisFrame)
-            {
-                FireMissile();
-            }
-            {
-                
-            }
+            if (Keyboard.current.spaceKey.wasPressedThisFrame)
+                FireMissileServerRpc();
+        }
+        else
+        {
+            turnInput = 0f;
+            thrustInput = 0f;
         }
 
-        var renderers = GetComponentsInChildren<SpriteRenderer>();
-        foreach (var r in renderers)
-        {
-            if (r.gameObject.name.Contains("Left")) thrustLeft = r;
-            if (r.gameObject.name.Contains("Right")) thrustRight = r;
-        }
+        float av = rb ? rb.angularVelocity : 0f;
 
-        if (thrustLeft) thrustLeft.enabled = turnRight; // turning right -> left thruster
-        if (thrustRight) thrustRight.enabled = turnLeft;  // turning left  -> right thruster
+        bool turningLeft = IsOwner ? (turnInput > 0f) : (av > 1f);
+        bool turningRight = IsOwner ? (turnInput < 0f) : (av < -1f);
 
+        if (thrustLeft) thrustLeft.enabled = turningRight; // turning right -> left thruster fires
+        if (thrustRight) thrustRight.enabled = turningLeft;  // turning left  -> right thruster fires
 
+        if (IsOwner)
+            sr.sprite = thrustInput > 0f ? spriteFire : spriteNormal;
+        else
+            sr.sprite = (rb && rb.linearVelocity.sqrMagnitude > 0.01f) ? spriteFire : spriteNormal;
+    }
 
+    private void FixedUpdate()
+    {
+        if (!IsOwner) return;
 
+        rb.angularVelocity = turnInput * rotationSpeed;
+
+        if (thrustInput > 0f)
+            rb.linearVelocity += (Vector2)transform.up * (thrustVal);
+    }
+
+    // SERVER spawns the missile so everyone gets the same missile
+    [ServerRpc]
+    private void FireMissileServerRpc()
+    {
+        Debug.Log($"Fire pressed. IsOwner={IsOwner} OwnerClientId={OwnerClientId} LocalClientId={NetworkManager.Singleton.LocalClientId}");
+
+        if (!missilePrefab || !missileSpawnPoint) return;
+
+        NetworkObject m = Instantiate(missilePrefab, missileSpawnPoint.position, missileSpawnPoint.rotation);
+        m.Spawn(true);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
     {
+        if (!IsServer) return;
+
         if (other.CompareTag("Missile"))
         {
-            Debug.Log("Rocket hit by missile");
-            // damage / explode / etc
-            health -= healthLoss;
-
+            Health.Value -= healthLoss;
+            Debug.Log($"Rocket hit by missile. Health={Health.Value}");
         }
     }
 
     private void OnCollisionEnter2D(Collision2D col)
     {
+        if (!IsServer) return;
+
         if (col.collider.CompareTag("Background"))
         {
-            Debug.Log("Rocket hit background");
-            health -= healthLoss;
+            Health.Value -= healthLoss;
+            Debug.Log($"Rocket hit background. Health={Health.Value}");
         }
     }
+}
 
-    private void FireMissile()
+
+public class ClientNetworkTransform : NetworkTransform
+{
+    protected override bool OnIsServerAuthoritative()
     {
-        Instantiate(
-            missilePrefab,
-            missileSpawnPoint.position,
-            missileSpawnPoint.rotation
-        );
+        return false;
     }
 }
