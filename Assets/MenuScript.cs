@@ -6,6 +6,7 @@ using TMPro;
 
 public class MenuScript : MonoBehaviour
 {
+    [SerializeField] private TMP_InputField ipInput;
     [SerializeField] private TMP_InputField portInput;
     [SerializeField] private Button hostButton;
     [SerializeField] private Button clientButton;
@@ -18,33 +19,57 @@ public class MenuScript : MonoBehaviour
 
     private void StartHost()
     {
+        
+
+
         ushort port = GetPort();
-        SetPort(port);
+        SetTransport("0.0.0.0", port); // listen on all interfaces
+
+        var t = NetworkManager.Singleton.GetComponent<Unity.Netcode.Transports.UTP.UnityTransport>();
+        t.ConnectionData.Address = "0.0.0.0";   // bind all interfaces
+        t.ConnectionData.Port = port;
+        NetworkManager.Singleton.StartHost();
 
         NetworkManager.Singleton.StartHost();
-        gameObject.SetActive(false); // hide menu
+        gameObject.SetActive(false);
     }
 
     private void StartClient()
     {
+        string ip = ipInput.text.Trim();
         ushort port = GetPort();
-        SetPort(port);
 
-        NetworkManager.Singleton.StartClient();
-        gameObject.SetActive(false); // hide menu
+        var nm = NetworkManager.Singleton;
+        Debug.Log($"StartClient clicked. NM null? {nm == null}");
+
+        var transport = nm.GetComponent<Unity.Netcode.Transports.UTP.UnityTransport>();
+        Debug.Log($"Transport found? {transport != null}");
+
+        transport.ConnectionData.Address = ip;
+        transport.ConnectionData.Port = port;
+
+        Debug.Log($"Trying connect to {transport.ConnectionData.Address}:{transport.ConnectionData.Port}");
+
+        nm.OnClientConnectedCallback += id => Debug.Log($"CLIENT CONNECTED. id={id}");
+        nm.OnClientDisconnectCallback += id => Debug.Log($"CLIENT DISCONNECTED. id={id} reason={nm.DisconnectReason}");
+
+        bool ok = nm.StartClient();
+        Debug.Log($"StartClient() returned: {ok}");
     }
+
 
     private ushort GetPort()
     {
         if (ushort.TryParse(portInput.text, out ushort port))
             return port;
 
-        return 7777; // fallback
+        return 7777;
     }
 
-    private void SetPort(ushort port)
+    private void SetTransport(string ip, ushort port)
     {
         var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        transport.ConnectionData.Address = ip;
         transport.ConnectionData.Port = port;
     }
 }

@@ -1,74 +1,38 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Netcode;
-using UnityEngine.UI;
 using TMPro;
 
 public class CameraScript : MonoBehaviour
 {
     [SerializeField] private Vector3 offset = new Vector3(0, 0, -10);
 
-
-
-    [SerializeField] public NetworkObject rocket;
-    private RocketScript rocketScript;
-    public TextMeshProUGUI healthText;
+    [Header("UI (local)")]
+    [SerializeField] private TextMeshProUGUI healthText;
 
     private Transform target;
-
-    private void Start()
-    {
-
-
-        NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
-    }
-
-    private void OnDestroy()
-    {
-        if (NetworkManager.Singleton != null)
-            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
-    }
-
-    private void OnClientConnected(ulong clientId)
-    {
-        // Only set target for *this* local client
-        if (clientId != NetworkManager.Singleton.LocalClientId) return;
-
-        TryAssignLocalPlayerAsTarget();
-    }
-
-    private void TryAssignLocalPlayerAsTarget()
-    {
-        var playerObj = NetworkManager.Singleton.LocalClient?.PlayerObject;
-        if (playerObj != null)
-        {
-            rocket = playerObj;
-            target = playerObj.transform;
-
-            rocketScript = playerObj.GetComponent<RocketScript>();
-
-            Debug.Log($"Camera target set to local player: {target.name}");
-        }
-    }
+    private RocketScript rocketScript;
 
     private void LateUpdate()
     {
-        if (target == null && NetworkManager.Singleton != null && NetworkManager.Singleton.IsClient)
+        // Bind to local player when it exists
+        if (target == null || rocketScript == null)
             TryAssignLocalPlayerAsTarget();
 
-        if (target == null) return;
-        var p = target.position + offset;
-        p.z = -10;
-
-        transform.position = p;
-
-        // health stuff
-        if (rocketScript != null)
+        // Follow
+        if (target != null)
         {
-            healthText.text = $"Health: \n {rocketScript.Health.Value:0}%";
+            var p = target.position + offset;
+            p.z = offset.z; // keep -10
+            p.z = -10;
+            transform.position = p;
         }
 
-        // Zoom
+        // Update health UI
+        if (healthText != null && rocketScript != null)
+            healthText.text = $"Health: \n {rocketScript.Health.Value:0}%";
+
+        // Optional zoom
         if (Keyboard.current != null)
         {
             var cam = Camera.main;
@@ -78,5 +42,19 @@ public class CameraScript : MonoBehaviour
                 if (Keyboard.current.eKey.isPressed) cam.orthographicSize += 0.1f;
             }
         }
+    }
+
+    private void TryAssignLocalPlayerAsTarget()
+    {
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsClient) return;
+
+        var playerObj = NetworkManager.Singleton.LocalClient?.PlayerObject;
+        if (playerObj == null) return;
+
+        target = playerObj.transform;
+        rocketScript = playerObj.GetComponent<RocketScript>();
+
+        if (rocketScript == null)
+            Debug.LogError("Local PlayerObject has no RocketScript component.");
     }
 }
